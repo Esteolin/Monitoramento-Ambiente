@@ -1,4 +1,4 @@
-!/bin/bash
+#!/bin/bash
 
 echo "======================================"
 echo "  MONITORAMENTO BÁSICO DO AMBIENTE"
@@ -18,4 +18,14 @@ if [ -d "$DIRETORIO" ]; then
 else
     echo "Erro: o diretório informado não existe."
     exit 1
+fi
+
+USO=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+
+if [ $USO -gt 90 ]; then
+    echo "Seu sistema está critico com o uso de $USO%"
+elif [ $USO -gt 70 ] && [ $USO -lt 90 ]; then
+    echo "Esse é um alerta que seu sitema está com uso de $USO%"
+else
+    echo "Seu sistema está OK para prosseguir com o uso de $USO%"
 fi
