@@ -42,5 +42,17 @@ while read pid cmd; do
     echo "PID: $pid | CMD: $cmd"
 done
 
+processos_total=$(ps -u "$USER" | wc -l)
+echo "Processos sendo executados pelo usuário $USER: $processos_total"
+
+echo ""
+echo "Top 5 processos que mais consomem memória:"
+echo "PID -- MEM% -- Comando"
+
+ps -eo pid,%mem,comm --sort=-%mem | sed 1d | head -n 5 | while read pid mem cmd
+do
+    echo "$pid -- $mem -- $cmd"
+done
+
 
 
