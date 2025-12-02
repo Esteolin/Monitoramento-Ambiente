@@ -29,3 +29,18 @@ elif [ $USO -gt 70 ] && [ $USO -lt 90 ]; then
 else
     echo "Seu sistema está OK para prosseguir com o uso de $USO%"
 fi
+
+PROCESSOS=$(ps aux | wc -l)
+
+echo "Número de processos em execução: $PROCESSOS"
+
+echo "=== TOP 5 processos que mais consomem memória ==="
+
+
+ps aux | sort -nrk 4 | head -n 5 | awk '{print $2, $11}' |
+while read pid cmd; do
+    echo "PID: $pid | CMD: $cmd"
+done
+
+
+
