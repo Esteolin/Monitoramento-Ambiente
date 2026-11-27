@@ -1,30 +1,76 @@
-# projeto-final-desktop
+# Projeto Final Desktop — Academia
 
 Sistema de gestão de academia em Electron, TypeScript e MySQL.
 
+## Pré-requisitos
+
+- **Node.js 22 ou superior** e npm.
+- **MySQL 8 ou superior**.
+- Permissão para criar banco e usuário no MySQL.
+
+Crie o banco e um usuário dedicado antes de rodar os scripts (ajuste nomes e credenciais):
+
+```sql
+CREATE DATABASE academia CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'academia_app'@'localhost' IDENTIFIED BY 'troque_esta_senha';
+GRANT ALL PRIVILEGES ON academia.* TO 'academia_app'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Use os mesmos valores em `DB_NAME`, `DB_USER` e `DB_PASSWORD` no `.env`.
+
 ## Como iniciar
 
-1. Preencha `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME` no arquivo `.env` (use o `.env.example` como modelo).
+1. Copie o modelo e preencha as variáveis de banco:
+
+```
+cp .env.example .env
+```
+
 2. Rode os comandos:
 
 ```
 npm install
 npm run criar-tabelas
-npm run criar-admin
-npm run criar-funcionario
+npm run popular-tabelas
 npm start
 ```
 
-`criar-tabelas` aplica `database/schema.sql`. `criar-admin` cria ou atualiza o administrador usando `ADMIN_NOME`, `ADMIN_EMAIL` e `ADMIN_SENHA` do `.env`. `criar-funcionario` cria ou atualiza um usuário com perfil de funcionário (`instrutor`) usando `FUNCIONARIO_NOME`, `FUNCIONARIO_EMAIL` e `FUNCIONARIO_SENHA` do `.env`.
+O banco indicado em `DB_NAME` precisa existir antes de `npm run criar-tabelas`. Esse script aplica `database/schema.sql` e executa migrações idempotentes. `popular-tabelas` aplica `database/seed.sql`, uma carga de demonstração que cobre as 15 tabelas — inclusive `lancamentos`, usada pelos relatórios.
 
-Login de funcionário já disponível neste projeto:
+Para um ambiente sem dados de demonstração, substitua `popular-tabelas` por:
 
 ```
-E-mail: funcionario@cl205172.com
-Senha:  Funcionario@123456
+npm run criar-admin
+npm run criar-funcionario
 ```
 
-O `npm install` baixa o binário do Electron automaticamente. Caso o binário esteja ausente ou corrompido, o `npm start` executa `scripts/garantir-electron.js` e baixa novamente antes de abrir a aplicação.
+`criar-admin` cria ou atualiza o administrador usando `ADMIN_NOME`, `ADMIN_EMAIL` e `ADMIN_SENHA` do `.env`. `criar-funcionario` cria ou atualiza um usuário com perfil de funcionário (`instrutor`) usando `FUNCIONARIO_NOME`, `FUNCIONARIO_EMAIL` e `FUNCIONARIO_SENHA` do `.env`.
+
+## Verificação
+
+Antes de avaliar ou abrir um PR, rode:
+
+```
+npm run typecheck
+npm run build
+npm test
+```
+
+O workflow `.github/workflows/ci.yml` executa esses mesmos comandos em pushes e pull requests.
+
+### Dados de demonstração
+
+O seed é idempotente: pode ser reaplicado sem duplicar registros; ele atualiza as linhas de demonstração e recalcula as datas relativas ao dia da execução. Credenciais disponíveis após `npm run popular-tabelas`:
+
+| Perfil | E-mail | Senha |
+|---|---|---|
+| Administrador | `admin@cotil.unicamp.br` | `Admin@123456` |
+| Funcionário (`instrutor`) | `funcionario@exemplo.com` | `Funcionario@123456` |
+
+As senhas são gravadas como hash `scrypt`, no formato `scrypt:<sal>:<hash>`, compatível com `Senha.gerar` em `src/autenticacao/AutenticacaoBackend.ts`. Alunos **não** acessam o aplicativo desktop: o login aceita apenas administradores e instrutores. Detalhes em `database/README.md`.
+
+O `npm install` baixa o binário do Electron automaticamente. Caso o binário esteja ausente ou corrompido, o `npm start` executa `scripts/garantir-electron.ts` e baixa novamente antes de abrir a aplicação.
 
 ## Tela inicial
 
@@ -34,15 +80,15 @@ A janela de login abre em 1200×760 e traz a foto da academia. Para usar a sua f
 src/autenticacao/assets/login-foto.jpg
 ```
 
-(crie a pasta `assets` se ela não existir) e rode `npm run build` antes de `npm start`. Sem o arquivo, a tela mostra um fundo verde automático no lugar da foto.
+(crie a pasta `assets` se ela não existir). O `npm start` já executa o build antes de abrir a aplicação. Sem o arquivo, a tela mostra um fundo verde automático no lugar da foto.
 
 O primeiro administrador precisa existir na tabela `usuarios`. A senha é guardada como hash `scrypt`, no formato `scrypt:<sal>:<hash>`. Depois de entrar como administrador, novos usuários são cadastrados pela opção Usuários do menu.
 
 ## Permissões
 
-- **Administrador:** acessa todas as telas, incluindo Gerenciar Bot, Relatórios e Funcionários.
-- **Funcionário (`instrutor`):** acessa as telas de rotina (Alunos, Aulas, Avaliações e Visitantes); não acessa Gerenciar Bot, Relatórios, Funcionários, Usuários, Planos, Pagamentos, Notificações nem Meu painel.
-- **Aluno:** não entra no sistema — o login é recusado mesmo com e-mail e senha corretos.
+- **Administrador:** acessa todas as telas, incluindo Gerenciar Bot, Relatórios, Funcionários e Lançamentos.
+- **Funcionário (`instrutor`):** acessa as telas de rotina (Alunos, Aulas, Avaliações e Visitantes); não acessa Gerenciar Bot, Relatórios, Funcionários, Usuários, Planos, Pagamentos, Notificações nem Lançamentos.
+- **Aluno:** consulta a agenda em **Aulas**, inscreve-se ou cancela somente a própria reserva, e usa o **Meu painel** para consulta.
 
 As regras são aplicadas também nos canais IPC, no processo principal — esconder o botão no menu não é a única proteção.
 
@@ -51,13 +97,15 @@ As regras são aplicadas também nos canais IPC, no processo principal — escon
 A tela **Gerenciar Bot** consulta a previsão do tempo para o dia seguinte usando a API pública Open-Meteo (sem chave de API).
 
 - Ao ativar o bot, ele verifica a previsão no intervalo escolhido (5 minutos a 24 horas) e também faz uma verificação ao iniciar a aplicação.
-- Se houver previsão de chuva, o bot envia e-mail para todos os alunos ativos com e-mail cadastrado e também exibe uma notificação do sistema avisando que a aula será realizada dentro da academia.
+- Se houver previsão de chuva, o bot envia e-mail para todos os alunos ativos com e-mail cadastrado e também exibe uma notificação do sistema avisando do risco.
+- O e-mail inclui um link de decisão para o aluno escolher entre cancelar a aula e movê-la para a área interna; a resposta é validada e registrada pelo servidor local do bot.
+- Cancelar muda o status da aula para `cancelada`; mover muda o local para `interna`. A decisão é única por aluno e turma, aulas já canceladas ou movidas não aceitam nova resposta e nenhum dado é excluído.
 - Sem previsão de chuva, nenhuma mensagem é enviada.
 - A tela também permite verificar o clima manualmente e mostra o histórico de avisos enviados, com a quantidade de e-mails entregues e eventuais falhas.
 
 ### Envio de e-mails (SMTP)
 
-Os domínios `@unicamp.br` e `@cotil.unicamp.br` usam **Google Workspace**, então o `.env` já vem apontando para o Gmail:
+Os domínios `@unicamp.br` e `@cotil.unicamp.br` usam **Google Workspace**. Para habilitar o envio pelo Gmail, descomente e preencha o bloco SMTP no `.env`:
 
 ```
 SMTP_HOST=smtp.gmail.com
@@ -90,7 +138,7 @@ O teste envia uma mensagem para o próprio `SMTP_USER`. Para enviar a outro ende
 npm run testar-email outro@email.com
 ```
 
-Dentro do aplicativo, abra **Gerenciar Bot** e clique em **Enviar e-mail de teste**. O destinatário vem de `SMTP_TESTE_DESTINATARIO` (ou de `SMTP_USER`, se não estiver definido). Neste projeto o destino do teste já está preenchido como `Tengpescarolo@gmail.com`; falta apenas a senha de app do Gmail em `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM`.
+Dentro do aplicativo, abra **Gerenciar Bot** e clique em **Enviar e-mail de teste**. O destinatário vem de `SMTP_TESTE_DESTINATARIO` (ou de `SMTP_USER`, se não estiver definido).
 
 Outras observações:
 
@@ -98,7 +146,8 @@ Outras observações:
 - Se o servidor exigir STARTTLS obrigatório, use `SMTP_REQUIRE_TLS=true`.
 - Se o servidor usar certificado autoassinado, use `SMTP_TLS_REJECT_UNAUTHORIZED=false`.
 - Os destinatários são os alunos **ativos** (`alunos.ativo = 1`) com e-mail válido na tabela `usuarios`.
-- Sem `SMTP_HOST`, `SMTP_USER` e `SMTP_PASS`, o bot continua exibindo apenas a notificação do sistema e informa na tela que o e-mail não está configurado.
+- Sem SMTP configurado, o bot continua exibindo apenas a notificação do sistema e informa na tela que o e-mail não está configurado.
+- O botão **Enviar e-mail de teste** usa `SMTP_TESTE_DESTINATARIO` quando definido; caso contrário usa o próprio `SMTP_USER`.
 
 Configurações opcionais de clima no `.env`:
 
@@ -119,7 +168,15 @@ A tela **Notificações** é exclusiva do administrador e mostra o histórico do
 - São consideradas mensalidades pendentes ou atrasadas com vencimento nos próximos 7 dias (ou vencidas há até 30 dias).
 - Cada pagamento não recebe um novo lembrete enquanto houver um envio bem-sucedido nos últimos 7 dias.
 - Falhas ficam registradas com o motivo e são tentadas novamente no ciclo seguinte; não existe botão de envio ou reenvio manual.
-- Sem SMTP configurado, nenhuma notificação é registrada e a tela informa que o envio está desativado.
+- Sem SMTP configurado, os lembretes são registrados como notificações internas (`canal = sistema`), sem e-mail.
+
+## Lançamentos
+
+A tela **Lançamentos**, exclusiva do administrador, faz o cadastro, a edição, a consulta e a exclusão das receitas avulsas nas categorias **Aulas**, **Aluguel** e **Outros**. Os filtros combinam categoria, intervalo de datas e trecho da descrição.
+
+Toda alteração é refletida nos relatórios: `src/relatorios/RelatorioBackend.ts` soma `lancamentos` pela `data_lancamento` dentro do período escolhido. A categoria **Planos** continua sendo calculada a partir de assinaturas e pagamentos e, por isso, não é editável nesta tela.
+
+Antes dessa tela, essas três categorias dependiam apenas dos dados de demonstração; agora o gestor pode mantê-las sem acessar o banco diretamente.
 
 ## Relatórios — participação da categoria líder
 
@@ -162,7 +219,18 @@ Origem dos valores:
 - **Planos:** soma dos valores dos planos das assinaturas não canceladas iniciadas no período, menos a soma dos pagamentos cancelados dessas assinaturas; o resultado nunca é negativo.
 - **Aulas, Aluguel e Outros:** soma dos lançamentos (`lancamentos`) de cada categoria no período.
 
-O cálculo e a formatação ficam em `src/relatorios/relatorios.ts`, nas funções `renderResumo` e `renderRanking`; a consulta ao banco está em `src/relatorios/RelatorioBackend.ts`.
+O cálculo e a formatação ficam em `src/relatorios/relatorios.ts`, nas funções `renderResumo`, `renderRanking` e `renderGrafico`; a consulta ao banco está em `src/relatorios/RelatorioBackend.ts`.
+
+### Visualização e ranking
+
+No campo **Gráfico** é possível alternar entre:
+
+- **Barras** — barras tradicionais, com a barra **Total** em destaque.
+- **Blocos** — 100 blocos em uma grade de 20 colunas por 5 linhas; cada bloco equivale a 1% da receita total e é preenchido na ordem Planos → Aulas → Aluguel → Outros. Blocos não preenchidos aparecem quando não há receita no período.
+
+A legenda do gráfico de blocos mostra, para cada categoria, o valor em reais e o percentual sobre o total. As cores são estáveis entre os dois gráficos. PDF e PNG capturam a tela como ela está, incluindo o tipo de gráfico e a visibilidade do ranking; CSV e JSON contêm apenas os dados do período.
+
+O botão **Mostrar ranking** exibe o painel com as categorias ordenadas pela receita; ao clicar novamente, o botão passa a **Ocultar ranking** e o gráfico ocupa toda a largura disponível. A largura da trilha de cada linha do ranking é relativa à categoria líder, enquanto o percentual exibido continua sendo calculado sobre a receita total.
 
 ### Exportação
 
@@ -177,12 +245,22 @@ CSV e JSON usam exatamente os valores carregados para o período selecionado, in
 
 ## Portal do aluno
 
-Nesta versão o acesso é exclusivo de funcionários e administradores. O perfil **aluno** não consegue entrar e a opção **Meu painel** não aparece no menu.
-
-O código do portal permanece no projeto para uso futuro e, quando for liberado, mostrará somente para consulta:
+O perfil **aluno** vê a opção **Meu painel**, somente para consulta, com:
 
 - plano contratado e situação da assinatura;
 - frequência dos últimos 90 dias;
 - última avaliação física, gráfico de evolução do peso e histórico de medidas;
 - presenças recentes;
 - avisos recebidos, incluindo os lembretes de vencimento.
+
+O portal não permite editar dados cadastrais, medidas ou avisos.
+
+## Clima sem o Electron
+
+Para rodar o agendador do bot fora da janela do Electron:
+
+```
+npm run clima-servidor
+```
+
+Os scripts `preparar-teste-clima`, `testar-clima` e `limpar-teste-clima` permitem validar o envio e a decisão do aluno sem depender da interface.
